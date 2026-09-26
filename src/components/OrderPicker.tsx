@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { readableError } from "@/lib/error-text";
 
 type Drink = {
   id: string;
@@ -81,10 +82,21 @@ export default function OrderPicker({
     });
   }, []);
 
+  // 空态（R-8）：没有饮品、没有可选时刻都不该让人对着空白卡片猜
+  const noDrinks = drinks.length === 0;
+  const noSlots = options.slots.length === 0;
+
   const canSubmit =
-    itemCount > 0 && !!arrival && /^\d{4}$/.test(phoneTail) && options.accepting;
+    !noDrinks &&
+    !noSlots &&
+    itemCount > 0 &&
+    !!arrival &&
+    /^\d{4}$/.test(phoneTail) &&
+    options.accepting;
 
   async function submit() {
+    // 防重（R-9）：按钮 disabled 之外再挡一道，键盘回车/连点都不会重复提交
+    if (submitting) return;
     setError(null);
     setSubmitting(true);
     if (!pendingToken.current) pendingToken.current = newClientToken();
@@ -110,8 +122,8 @@ export default function OrderPicker({
       }
       window.location.href = `/order/${data.order.id}`;
     } catch (err) {
-      // 网络层失败时 token 故意保留：结果未知，重试必须复用
-      setError((err as Error).message);
+      // 网络层失败时 token 故意保留：结果未知，重试必须复用（R-2）
+      setError(readableError(err, "下单失败，请重试"));
       setSubmitting(false);
     }
   }
@@ -120,6 +132,11 @@ export default function OrderPicker({
     <>
       <div className="card">
         <p className="section-title">常点（为你置顶）</p>
+        {noDrinks && (
+          <p className="empty" role="status">
+            店家还没有上架饮品，暂时无法在这里下单。可以直接到店点单。
+          </p>
+        )}
         {visible.map((d) => (
           <div className="menu-row" key={d.id}>
             <div>
@@ -165,6 +182,11 @@ export default function OrderPicker({
 
       <div className="card">
         <p className="section-title">到店时间（必选）</p>
+        {noSlots && (
+          <p className="empty" role="status">
+            现在没有可选的到店时间（可能已经打烊）。稍后再来，或者直接到店点单。
+          </p>
+        )}
         <div className="slots" role="group" aria-label="选择到店时间">
           {options.slots.map((iso) => (
             <button
@@ -230,15 +252,20 @@ export default function OrderPicker({
           type="button"
           className="btn btn-primary"
           disabled={!canSubmit || submitting}
+          aria-busy={submitting}
           onClick={submit}
         >
           {submitting
             ? "正在下单…"
-            : options.accepting
-              ? itemCount > 0
-                ? `确认并支付 ${yuan(totalCents)}`
-                : "请先选择饮品"
-              : "店家暂停接单中"}
+            : !options.accepting
+              ? "店家暂停接单中"
+              : noDrinks
+                ? "暂无可下单的饮品"
+                : noSlots
+                  ? "暂无可选的到店时间"
+                  : itemCount > 0
+                    ? `确认并支付 ${yuan(totalCents)}`
+                    : "请先选择饮品"}
         </button>
         {!options.accepting && (
           <p className="hint">

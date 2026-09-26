@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readableError } from "@/lib/error-text";
 
 type OrderItem = {
   id: string;
@@ -69,29 +70,62 @@ function countdownText(deadlineIso: string | null, now: number): string | null {
 
 /** AC-11：状态变更需在 30 秒内可见，这里用 4 秒轮询保证体验 */
 const POLL_MS = 4000;
+/** 拉取失败后的重试间隔（阶段 3 / R-6）：比正常轮询更急一点，恢复得更快 */
+const RETRY_MS = 3000;
+
+function fmtClock(ms: number): string {
+  const d = new Date(ms);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+}
 
 export default function OrderStatusTracker({ initial }: { initial: Payload }) {
   const [data, setData] = useState<Payload>(initial);
   const [now, setNow] = useState(() => Date.now());
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 断网可见性（R-6）：拿不到最新数据时必须说出来，不能让人对着旧状态做决定
+  const [offline, setOffline] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const status = data.order.status;
   const isFinal = status === "PICKED_UP" || status === "CANCELED";
 
+  /** 返回本次是否成功，供轮询决定下一次的间隔（R-6） */
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/orders/${initial.order.id}`, {
-      cache: "no-store",
-    });
-    if (res.ok) setData(await res.json());
+    try {
+      const res = await fetch(`/api/orders/${initial.order.id}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setData(await res.json());
+      setOffline(false);
+      setLastSyncAt(Date.now());
+      return true;
+    } catch {
+      // 不抛出：轮询失败是常态（地铁里、电梯里），抛出去只会变成控制台噪声
+      setOffline(true);
+      return false;
+    }
   }, [initial.order.id]);
 
-  // 轮询：终态后停止，避免无意义请求
+  // 轮询：终态后停止；成功后 4 秒一次，失败后 3 秒重试（R-6）
   useEffect(() => {
     if (isFinal) return;
-    const id = setInterval(refresh, POLL_MS);
-    return () => clearInterval(id);
+    let stopped = false;
+    let next: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      const ok = await refresh();
+      if (stopped) return;
+      next = setTimeout(tick, ok ? POLL_MS : RETRY_MS);
+    };
+    next = setTimeout(tick, POLL_MS);
+    return () => {
+      stopped = true;
+      if (next) clearTimeout(next);
+    };
   }, [isFinal, refresh]);
 
   // 本地秒级刷新倒计时，不依赖服务端
@@ -122,7 +156,9 @@ export default function OrderStatusTracker({ initial }: { initial: Payload }) {
       await refresh();
       setToast(action === "cancel" ? "已取消，退款将原路退回" : "已通知店员");
     } catch (err) {
-      setToast((err as Error).message);
+      // 网络层失败说明此刻也拿不到最新状态，顺手把横幅亮起来（R-7）
+      if (err instanceof TypeError) setOffline(true);
+      setToast(readableError(err));
     } finally {
       setBusy(false);
     }
@@ -139,6 +175,15 @@ export default function OrderStatusTracker({ initial }: { initial: Payload }) {
 
   return (
     <>
+      {offline && (
+        <div className="card card-tight" role="status" aria-live="polite">
+          <span className="badge badge-warn">网络不稳</span>
+          <div className="muted">
+            正在重试…下面显示的状态可能不是最新的，恢复后会自动更新。
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <span className={badgeClass}>{STATUS_TEXT[status] ?? status}</span>
 
@@ -246,6 +291,14 @@ export default function OrderStatusTracker({ initial }: { initial: Payload }) {
           )}
         </div>
       )}
+
+      <p className="muted" style={{ textAlign: "center" }}>
+        {offline
+          ? "网络恢复后会自动同步最新状态"
+          : lastSyncAt
+            ? `已同步 · 最后更新 ${fmtClock(lastSyncAt)}`
+            : "状态每 4 秒自动刷新"}
+      </p>
 
       <p className="muted" style={{ textAlign: "center" }}>
         本单为模拟支付，未产生真实扣款。
