@@ -7,6 +7,7 @@ import {
   getOrder,
   requestHold,
 } from "@/lib/domain";
+import { readJsonObject } from "@/lib/http";
 import { AUTO_CANCEL_MS, FREE_CANCEL_MS } from "@/lib/time";
 
 export const runtime = "nodejs";
@@ -55,7 +56,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonObject(req);
     const action = body.action;
 
     if (action === "cancel") {
@@ -66,7 +67,10 @@ export async function POST(
       const order = await requestHold(id);
       return NextResponse.json({ order });
     }
-    return NextResponse.json({ error: "未知操作" }, { status: 400 });
+    return NextResponse.json(
+      { error: "未知操作（支持 cancel / hold）" },
+      { status: 400 },
+    );
   } catch (err) {
     return errorResponse(err);
   }

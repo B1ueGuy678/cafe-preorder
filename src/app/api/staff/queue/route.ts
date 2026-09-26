@@ -6,6 +6,7 @@ import {
   setAccepting,
   updatePrepMinutes,
 } from "@/lib/domain";
+import { readJsonObject } from "@/lib/http";
 import { isStaffAuthed } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
     if (!(await isStaffAuthed())) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonObject(req);
     if (typeof body.accepting === "boolean") {
       const shop = await setAccepting(body.accepting);
       return NextResponse.json({

@@ -6,6 +6,7 @@ import {
   markReady,
   rejectOrder,
 } from "@/lib/domain";
+import { readJsonObject } from "@/lib/http";
 import { isStaffAuthed } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -25,7 +26,7 @@ export async function POST(
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonObject(req);
     const action = body.action;
 
     switch (action) {
@@ -34,7 +35,10 @@ export async function POST(
         return NextResponse.json({ order, prepMinutes });
       }
       case "reject": {
-        const order = await rejectOrder(id, body.reason);
+        const order = await rejectOrder(
+          id,
+          typeof body.reason === "string" ? body.reason : "",
+        );
         return NextResponse.json({ order });
       }
       case "ready": {

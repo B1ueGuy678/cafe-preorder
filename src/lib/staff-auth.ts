@@ -14,6 +14,33 @@ const COOKIE_NAME = "staff_session";
 /** 会话有效期：12 小时（一个营业日） */
 const SESSION_MAX_AGE = 12 * 60 * 60;
 
+// ---- 失败限速：防口令爆破（阶段 3 / R-5）----
+// 口令只有 4 位数字量级的熵，不限速的话脚本几分钟就能试完。
+// 计数放进程内存，重启即清零；单店单实例够用（见 docs/POLISH.md §5）
+const MAX_FAILURES = 5;
+const LOCK_MS = 5 * 60 * 1000;
+const failures = new Map<string, { count: number; resetAt: number }>();
+
+/** 该来源还剩多久解锁；返回 0 表示未被锁 */
+export function lockRemainingMs(clientKey: string, now = Date.now()): number {
+  const rec = failures.get(clientKey);
+  if (!rec) return 0;
+  if (now >= rec.resetAt) {
+    failures.delete(clientKey);
+    return 0;
+  }
+  return rec.count >= MAX_FAILURES ? rec.resetAt - now : 0;
+}
+
+function recordFailure(clientKey: string, now = Date.now()): void {
+  const rec = failures.get(clientKey);
+  if (!rec || now >= rec.resetAt) {
+    failures.set(clientKey, { count: 1, resetAt: now + LOCK_MS });
+    return;
+  }
+  rec.count += 1;
+}
+
 export function getStaffPasscode(): string | null {
   const code = process.env.STAFF_PASSCODE;
   return code && code.length > 0 ? code : null;
@@ -45,10 +72,17 @@ function sessionToken(): string {
   return `s${Math.abs(hash).toString(36)}`;
 }
 
-export async function signInStaff(input: string): Promise<boolean> {
+export async function signInStaff(
+  input: string,
+  clientKey = "local",
+): Promise<boolean> {
   const code = getStaffPasscode();
   if (!code) return process.env.NODE_ENV !== "production";
-  if (input !== code) return false;
+  if (input !== code) {
+    recordFailure(clientKey);
+    return false;
+  }
+  failures.delete(clientKey);
   const jar = await cookies();
   jar.set(COOKIE_NAME, sessionToken(), {
     httpOnly: true,

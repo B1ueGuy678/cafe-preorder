@@ -132,7 +132,7 @@ stateDiagram-v2
 | 方法 | 路径 | 用途 | 对应验收标准 |
 | --- | --- | --- | --- |
 | GET | `/api/orders` | 取可选到店时刻 + 店铺接单状态 | AC-2 / AC-9 |
-| POST | `/api/orders` | 下单（模拟支付，直接进 PENDING） | AC-1 / AC-2 |
+| POST | `/api/orders` | 下单（模拟支付，直接进 PENDING）；带 `clientToken` 时幂等 | AC-1 / AC-2 |
 | GET | `/api/orders/:id` | 订单详情 + 预计做好时刻 + 两个倒计时 | AC-3 / AC-11 |
 | POST | `/api/orders/:id` | `{action:"cancel"}` / `{action:"hold"}` | AC-4 / AC-12 |
 | GET | `/api/staff/queue` | 店员端队列（**按到店时刻排序**）+ 今日统计 | AC-5 |
@@ -144,6 +144,20 @@ stateDiagram-v2
 - 错误统一返回 `{ error: string }`，中文、可直接展示给顾客，`status` 用语义化 HTTP 码
 - 所有写操作都返回更新后的完整订单对象，前端无需二次请求
 - `runtime = "nodejs"`：Prisma 不能在 Edge Runtime 运行
+
+**阶段 3 增补：异常路径契约**（规格见 `docs/POLISH.md`，测试见 `scripts/e2e.mjs` 与 `scripts/guards.mjs`）
+
+| 情形 | 行为 | 编号 |
+| --- | --- | --- |
+| 请求体不是合法 JSON 对象 | `400`（不再是 500） | R-3 |
+| 同一 `clientToken` 重复下单 | 首次 `201`；重试 `200` + **同一张**订单（`reused: true`） | R-2 |
+| 状态流转撞车（两人同时接单/取消） | 恰好一个成功，其余 `409`「状态刚刚被其他人改动」 | R-1 |
+| `PAY_MODE=MOCK_FAIL` 时下单 | `402`，且不产生订单行 | R-4 |
+| 口令连续错 5 次 | 第 6 次起 `429`，锁 5 分钟（连正确口令一起锁） | R-5 |
+
+原子性的落点只有一个：`src/lib/domain.ts` 的 `transition()`。它写入时带上
+`where { id, status: from }`，写不进去就说明别人先改了 —— 两个请求各自都合法，
+但只有一个能成为事实。所有状态流转共用它，所以接单/拒单/做好/取餐/取消/超时全部受益。
 
 **服务端校验清单**（不能只靠前端）：
 到店时刻必须是 5 分钟整数倍（AC-2）、不能早于当前时间、后四位必须是 4 位数字、

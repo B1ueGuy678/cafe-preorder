@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { DomainError, autoCancelStale, createOrder } from "@/lib/domain";
+import { readJsonObject } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,15 +21,17 @@ export async function GET() {
 /** POST：下单（AC-1 / AC-2 / AC-9） */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const order = await createOrder({
-      lines: body.lines ?? [],
+    const body = await readJsonObject(req);
+    const { order, reused } = await createOrder({
+      lines: body.lines,
       phoneTail: body.phoneTail,
       arrivalAt: body.arrivalAt,
       customerName: body.customerName,
       note: body.note,
+      clientToken: body.clientToken,
     });
-    return NextResponse.json({ order }, { status: 201 });
+    // 同一 clientToken 的重复提交返回 200 与**同一张**订单，前端无需区分（R-2）
+    return NextResponse.json({ order, reused }, { status: reused ? 200 : 201 });
   } catch (err) {
     return errorResponse(err);
   }

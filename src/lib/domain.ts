@@ -59,23 +59,38 @@ export async function getArrivalOptions(count = 8) {
  * 阶段 2 为模拟支付：创建订单即视为已支付，直接进入 PENDING。
  */
 export async function createOrder(input: {
-  lines: CartLine[];
-  phoneTail: string;
-  arrivalAt: string;
-  customerName?: string;
-  note?: string;
+  lines: unknown;
+  phoneTail: unknown;
+  arrivalAt: unknown;
+  customerName?: unknown;
+  note?: unknown;
+  /** 幂等键（R-2）：同一次下单意图的重试必须复用同一个值 */
+  clientToken?: unknown;
 }) {
+  const clientToken = parseClientToken(input.clientToken);
+  if (clientToken) {
+    // 重试：这一次意图已经落过单了，把原来那张还回去，不要再建一张
+    const existing = await prisma.order.findUnique({
+      where: { clientToken },
+      include: { items: true },
+    });
+    if (existing) return { order: existing, reused: true };
+  }
+
   const shop = await getShop();
 
   if (!shop.accepting) {
     throw new DomainError("店家当前暂停接单，请稍后再试或直接到店点单", 409);
   }
 
-  const tail = (input.phoneTail ?? "").trim();
+  const tail = String(input.phoneTail ?? "").trim();
   if (!/^\d{4}$/.test(tail)) {
     throw new DomainError("请填写手机号后四位（取餐时用于核对）");
   }
 
+  if (typeof input.arrivalAt !== "string") {
+    throw new DomainError("到店时间格式不正确");
+  }
   const arrival = new Date(input.arrivalAt);
   if (Number.isNaN(arrival.getTime())) {
     throw new DomainError("到店时间格式不正确");
@@ -87,7 +102,8 @@ export async function createOrder(input: {
     throw new DomainError("到店时间必须是 5 分钟的整数倍");
   }
 
-  const lines = (input.lines ?? []).filter((l) => l.qty > 0);
+  const lines = (Array.isArray(input.lines) ? (input.lines as CartLine[]) : [])
+    .filter((l) => l && typeof l.drinkId === "string" && l.qty > 0);
   if (lines.length === 0) {
     throw new DomainError("请至少选择一杯饮品");
   }
@@ -110,33 +126,84 @@ export async function createOrder(input: {
 
   const startMakingAt = computeStartMakingAt(arrival, shop.prepMinutes);
 
-  return prisma.order.create({
-    data: {
-      shopId: shop.id,
-      status: ORDER_STATUS.PENDING, // 模拟支付：创建即已支付
-      paidAt: new Date(),
-      payMode: "MOCK",
-      phoneTail: tail,
-      customerName: input.customerName?.trim() || null,
-      arrivalAt: arrival,
-      startMakingAt,
-      totalCents,
-      note: input.note?.trim() || null,
-      items: {
-        create: lines.map((l) => {
-          const d = byId.get(l.drinkId)!;
-          return {
-            drinkId: d.id,
-            nameSnap: d.name,
-            sizeSnap: d.size,
-            priceCents: d.priceCents,
-            qty: l.qty,
-          };
-        }),
+  const mode = resolvePayMode();
+  if (mode === PAY_MODE.MOCK_FAIL) {
+    // 模拟支付失败：不落任何订单行，顾客可以直接重试（R-4）
+    throw new DomainError("支付未成功，没有产生扣款。请重试，或直接到店点单。", 402);
+  }
+
+  try {
+    const order = await prisma.order.create({
+      data: {
+        shopId: shop.id,
+        status: ORDER_STATUS.PENDING, // 模拟支付：创建即已支付
+        paidAt: new Date(),
+        payMode: mode,
+        clientToken,
+        phoneTail: tail,
+        customerName: optionalText(input.customerName),
+        arrivalAt: arrival,
+        startMakingAt,
+        totalCents,
+        note: optionalText(input.note),
+        items: {
+          create: lines.map((l) => {
+            const d = byId.get(l.drinkId)!;
+            return {
+              drinkId: d.id,
+              nameSnap: d.name,
+              sizeSnap: d.size,
+              priceCents: d.priceCents,
+              qty: l.qty,
+            };
+          }),
+        },
       },
-    },
-    include: { items: true },
-  });
+      include: { items: true },
+    });
+    return { order, reused: false };
+  } catch (err) {
+    // 两个重试请求同时到达：一个建成功，另一个撞唯一约束。
+    // 撞了就把已存在的那张单还回去，对顾客而言仍然是「一单」（R-2）
+    if (clientToken && isUniqueViolation(err)) {
+      const existing = await prisma.order.findUnique({
+        where: { clientToken },
+        include: { items: true },
+      });
+      if (existing) return { order: existing, reused: true };
+    }
+    throw err;
+  }
+}
+
+/** 支付模式（模拟支付）：MOCK 恒成功；MOCK_FAIL 演练「支付失败」分支 */
+export const PAY_MODE = { MOCK: "MOCK", MOCK_FAIL: "MOCK_FAIL" } as const;
+
+function resolvePayMode(): string {
+  const mode = (process.env.PAY_MODE ?? PAY_MODE.MOCK).trim().toUpperCase();
+  if (mode !== PAY_MODE.MOCK && mode !== PAY_MODE.MOCK_FAIL) {
+    throw new DomainError(`PAY_MODE 配置不正确：${mode}`, 500);
+  }
+  return mode;
+}
+
+/** 幂等键校验：格式不对宁可报错，也不静默降级成非幂等（R-2） */
+function parseClientToken(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (typeof raw !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(raw)) {
+    throw new DomainError("下单标识格式不正确，请刷新页面后重试");
+  }
+  return raw;
+}
+
+function optionalText(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const t = raw.trim();
+  return t.length > 0 ? t : null;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "P2002";
 }
 
 /** 店员端队列：**按到店时刻排序**而非下单时刻（AC-5，本产品的核心机制） */
@@ -197,16 +264,31 @@ async function transition(
   to: OrderStatus,
   extra: Record<string, unknown> = {},
 ) {
-  const order = await prisma.order.findUnique({ where: { id: orderId } });
-  if (!order) throw new DomainError("订单不存在", 404);
+  const current = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { status: true },
+  });
+  if (!current) throw new DomainError("订单不存在", 404);
+
+  const from = current.status as OrderStatus;
   try {
-    assertTransition(order.status as OrderStatus, to);
+    assertTransition(from, to);
   } catch (err) {
     throw new DomainError((err as Error).message, 409);
   }
-  return prisma.order.update({
-    where: { id: orderId },
+
+  // 并发安全的关键一步：状态必须**仍然**是刚读到的那个才允许写入。
+  // 两个店员同时接单、顾客取消撞上店员接单、轮询超时取消撞上接单，
+  // 都只有一个能写成功，另一个拿到 409 去刷新（阶段 3 / R-1）。
+  const written = await prisma.order.updateMany({
+    where: { id: orderId, status: from },
     data: { status: to, ...extra },
+  });
+  if (written.count === 0) {
+    throw new DomainError("订单状态刚刚被其他人改动了，请刷新后重试", 409);
+  }
+  return prisma.order.findUniqueOrThrow({
+    where: { id: orderId },
     include: { items: true },
   });
 }

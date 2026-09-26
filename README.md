@@ -59,11 +59,16 @@ STAFF_PASSCODE=改成你自己的口令
 ## 验证
 
 ```bash
-node scripts/smoke.mjs   # 核心机制与状态机，20 项，无需服务器
-node scripts/e2e.mjs     # 真实 HTTP 主流程，19 项，需 dev server 运行中
+node scripts/smoke.mjs    # 核心机制与状态机，20 项，无需服务器
+node scripts/e2e.mjs      # 真实 HTTP 主流程 + 异常路径，36 项，需 dev server 运行中
+node scripts/guards.mjs   # 口令限速与支付失败，12 项，自带独立 server（端口 3101）
 ```
 
-两个脚本都会在结束后清理自己产生的测试数据，可反复运行。
+`guards.mjs` 会自己起一个 server，所以**跑之前要先停掉 dev server**：
+两个 `next dev` 共用同一个 `.next` 目录会互相覆盖构建产物（症状是页面开始 404/500）。
+脚本启动前会检查 3000 端口，占用就直接拒绝运行。
+
+三个脚本都会在结束后清理自己产生的测试数据（`guards.mjs` 连自己起的 server 一起收掉），可反复运行。
 
 ## 文档
 
@@ -72,6 +77,7 @@ node scripts/e2e.mjs     # 真实 HTTP 主流程，19 项，需 dev server 运�
 | `PRD.md` | 阶段 0：5 顾客 + 1 店员访谈、点单动线、反常识发现、痛点排序 |
 | `docs/PRODUCT.md` | 阶段 1：目标用户、价值主张、用户故事地图、15 条验收标准、非目标、线框 |
 | `docs/ARCHITECTURE.md` | 阶段 2：数据模型、订单状态机、API 契约、部署图、技术债 |
+| `docs/POLISH.md` | 阶段 3：异常路径规格 R-1…R-15、任务分解、验证命令 |
 | `SETUP.md` | 本机网络与工程环境的绕行方案（代理、TLS 后端、npm 缓存、spawn 限制） |
 | `DEMO.md` | 待阶段 6-7 补充：上线地址、真实数据、用户反馈、下一步 |
 

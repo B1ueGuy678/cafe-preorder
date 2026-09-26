@@ -78,6 +78,10 @@ model Order {
   totalCents   Int
   note         String? // 糖度/冰度备注
 
+  // 下单幂等键（阶段 3 / R-2）：一次下单意图一个值，网络重试复用同一个，
+  // 服务端据此认出「这是重试」而不是「又下了一单」
+  clientToken String? @unique
+
   // 支付（阶段 2 为模拟支付）
   payMode      String  @default("MOCK")
   paidAt       DateTime?

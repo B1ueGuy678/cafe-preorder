@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Drink = {
   id: string;
@@ -31,6 +31,13 @@ function yuan(cents: number): string {
 /** 常点置顶：sortOrder 靠前的直接展示，其余折叠 */
 const TOP_N = 4;
 
+/** 下单幂等键（R-2）：同一次下单意图的重试复用同一个值 */
+function newClientToken(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function OrderPicker({
   drinks,
   options,
@@ -45,6 +52,8 @@ export default function OrderPicker({
   const [showAll, setShowAll] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 请求已发出但结果未知时（断网/超时）保留它，让重试被服务端认出来
+  const pendingToken = useRef<string | null>(null);
 
   // 默认选中第一个可用时刻：AC-1 要求 30 秒内下单，不能逼用户先想时间
   useEffect(() => {
@@ -78,6 +87,7 @@ export default function OrderPicker({
   async function submit() {
     setError(null);
     setSubmitting(true);
+    if (!pendingToken.current) pendingToken.current = newClientToken();
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -89,12 +99,18 @@ export default function OrderPicker({
           phoneTail,
           arrivalAt: arrival,
           note,
+          clientToken: pendingToken.current,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "下单失败");
+      if (!res.ok) {
+        // 服务端明确拒绝了 → 结果确定（没有落单）→ 下次点击算新的下单意图
+        pendingToken.current = null;
+        throw new Error(data.error ?? "下单失败");
+      }
       window.location.href = `/order/${data.order.id}`;
     } catch (err) {
+      // 网络层失败时 token 故意保留：结果未知，重试必须复用
       setError((err as Error).message);
       setSubmitting(false);
     }

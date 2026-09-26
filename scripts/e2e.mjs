@@ -167,6 +167,115 @@ async function main() {
     `实际 ${illegal.status}`,
   );
 
+  // ---------- 阶段 3 / R-2：重复提交只产生一张单 ----------
+  console.log("\n[R-2] 重复提交（断网重试）只产生一张单");
+  const token = `e2e-${Date.now().toString(36)}-dup`;
+  const sameBody = JSON.stringify({
+    lines: [{ drinkId: menu.id, qty: 1 }],
+    phoneTail: "4321",
+    arrivalAt: slotAt(15).toISOString(),
+    clientToken: token,
+  });
+  const firstTry = await req("/api/orders", { method: "POST", body: sameBody });
+  const retry = await req("/api/orders", { method: "POST", body: sameBody });
+  check("首次提交返回 201", firstTry.status === 201, `实际 ${firstTry.status}`);
+  check("重试返回 200", retry.status === 200, `实际 ${retry.status}`);
+  check(
+    "两次拿到的是同一张订单",
+    !!firstTry.body.order?.id && firstTry.body.order.id === retry.body.order?.id,
+  );
+  check("重试被标记 reused=true", retry.body.reused === true);
+  check(
+    "库里只有一张单",
+    (await prisma.order.count({ where: { clientToken: token } })) === 1,
+  );
+  if (firstTry.body.order?.id) cleanup.push(firstTry.body.order.id);
+
+  const badToken = await req("/api/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      lines: [{ drinkId: menu.id, qty: 1 }],
+      phoneTail: "4321",
+      arrivalAt: slotAt(15).toISOString(),
+      clientToken: "短",
+    }),
+  });
+  check("非法幂等键被拒绝（400）", badToken.status === 400, `实际 ${badToken.status}`);
+
+  // ---------- 阶段 3 / R-3：畸形请求体是客户端错误，不该是 500 ----------
+  console.log("\n[R-3] 畸形请求体返回 400 而不是 500");
+  const brokenJson = await req("/api/orders", { method: "POST", body: "{这不是 JSON" });
+  check("非 JSON 体被拒绝（400）", brokenJson.status === 400, `实际 ${brokenJson.status}`);
+  const notObject = await req("/api/orders", {
+    method: "POST",
+    body: JSON.stringify("abcdef"),
+  });
+  check("非对象 JSON 体被拒绝（400）", notObject.status === 400, `实际 ${notObject.status}`);
+  const emptyBody = await req("/api/orders", { method: "POST", body: JSON.stringify({}) });
+  check(
+    "空对象走校验分支（400）而非 500",
+    emptyBody.status === 400,
+    `实际 ${emptyBody.status}`,
+  );
+
+  // ---------- 阶段 3 / R-1：并发接单只能有一个人成功 ----------
+  console.log("\n[R-1] 并发接单：三个店员同时点「接单」");
+  const raceOrder = await req("/api/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      lines: [{ drinkId: menu.id, qty: 1 }],
+      phoneTail: "5555",
+      arrivalAt: slotAt(20).toISOString(),
+    }),
+  });
+  const raceId = raceOrder.body.order?.id;
+  check("并发测试订单已创建", !!raceId);
+  if (raceId) {
+    cleanup.push(raceId);
+    const accepted = await Promise.all(
+      [1, 2, 3].map(() =>
+        req(`/api/staff/orders/${raceId}`, {
+          method: "POST",
+          body: JSON.stringify({ action: "accept" }),
+        }),
+      ),
+    );
+    const statuses = accepted.map((r) => r.status);
+    check("恰好一个接单成功", statuses.filter((s) => s === 200).length === 1, JSON.stringify(statuses));
+    check("其余两个拿到 409（没有静默覆盖）", statuses.filter((s) => s === 409).length === 2, JSON.stringify(statuses));
+    const finalRace = await prisma.order.findUnique({ where: { id: raceId } });
+    check("订单最终状态为 MAKING", finalRace?.status === "MAKING", `实际 ${finalRace?.status}`);
+  }
+
+  // ---------- 阶段 3 / R-1：并发取消（双开页面同时点）----------
+  console.log("\n[R-1] 并发取消：同一个订单同时点两次取消");
+  const cancelOrder = await req("/api/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      lines: [{ drinkId: menu.id, qty: 1 }],
+      phoneTail: "6666",
+      arrivalAt: slotAt(25).toISOString(),
+    }),
+  });
+  const cancelId = cancelOrder.body.order?.id;
+  check("并发取消测试订单已创建", !!cancelId);
+  if (cancelId) {
+    cleanup.push(cancelId);
+    const canceled = await Promise.all(
+      [1, 2].map(() =>
+        req(`/api/orders/${cancelId}`, {
+          method: "POST",
+          body: JSON.stringify({ action: "cancel" }),
+        }),
+      ),
+    );
+    const statuses = canceled.map((r) => r.status);
+    check("恰好一次取消成功", statuses.filter((s) => s === 200).length === 1, JSON.stringify(statuses));
+    check("另一次拿到 409", statuses.filter((s) => s === 409).length === 1, JSON.stringify(statuses));
+    const finalCancel = await prisma.order.findUnique({ where: { id: cancelId } });
+    check("取消原因为 CUSTOMER", finalCancel?.cancelReason === "CUSTOMER", `实际 ${finalCancel?.cancelReason}`);
+  }
+
   // ---------- 清理 ----------
   console.log("\n清理测试数据…");
   await prisma.order.deleteMany({ where: { id: { in: cleanup } } });
