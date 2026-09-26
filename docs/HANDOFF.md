@@ -2,7 +2,7 @@
 
 > 用途：换一个新对话继续推进本项目时，先读这份文件，再读它指向的文档。
 > 这样无需在对话里复述任何上下文。
-> 更新于：2026-09-26（阶段 2 完成时）
+> 更新于：阶段 2 完成时（2026-09-26）；仓库改名后由新对话更正路径与提交数
 
 ---
 
@@ -15,12 +15,12 @@
 
 | 项 | 值 |
 | --- | --- |
-| 仓库路径 | `D:\DeepSeek\pre-order` |
+| 仓库路径 | `D:\DeepSeek\cafe-preorder` |
 | 远程 | https://github.com/B1ueGuy678/cafe-preorder |
 | 分支 | `main` |
 | 技术栈 | Next.js 15 + TypeScript + Prisma + SQLite（开发）/ Postgres（生产） |
 | 支付 | 模拟支付（`PAY_MODE=MOCK`） |
-| 本地分支状态 | **领先远程 3 个提交，尚未 push** |
+| 本地分支状态 | **领先远程 4 个提交，尚未 push** |
 
 ## 3. 这是什么题目
 
@@ -108,7 +108,7 @@ src/
 ## 8. 怎么跑起来（本机有特殊约束，务必照抄）
 
 ```bash
-cd D:\DeepSeek\pre-order
+cd D:\DeepSeek\cafe-preorder
 
 # 依赖（必须带 --cache，否则缓存写工作区外被拒）
 npm install --cache .npm-cache
@@ -164,7 +164,7 @@ node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 
 **立刻要做**：
 
-1. 本地领先远程 3 个提交，需用户在自己终端 `git push`
+1. 本地领先远程 4 个提交，需用户在自己终端 `git push`
 
 **阶段 3（下一步）建议范围**：
 
@@ -191,7 +191,7 @@ node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 
 直接说：
 
-> 读 `D:\DeepSeek\pre-order\docs\HANDOFF.md` 和 `docs/ARCHITECTURE.md`，然后继续阶段 3。
+> 读 `D:\DeepSeek\cafe-preorder\docs\HANDOFF.md` 和 `docs/ARCHITECTURE.md`，然后继续阶段 3。
 
 或者只给一个具体任务（例如「把订单状态页的断网与错误态补齐」），
 让新对话自己读文档即可。**不要在新对话里重新讨论产品定位**——
@@ -199,6 +199,6 @@ node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 
 ## 13. 工作区规则提醒
 
-- 工作区根目录 `D:\DeepSeek` 只放主题文件夹，本项目产出全部在 `pre-order/` 内
+- 工作区根目录 `D:\DeepSeek` 只放主题文件夹，本项目产出全部在 `cafe-preorder/` 内
 - 本项目的每个阶段产物都落盘进仓库，不散落在对话里
 - 密钥、口令、Token 一律不入库、不进对话（`grep` 自查已纳入流程）
