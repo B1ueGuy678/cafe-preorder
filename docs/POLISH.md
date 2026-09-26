@@ -133,6 +133,8 @@ node scripts/guards.mjs     # 自带一个配了口令 + 支付失败的独立 s
 **S3-4 进展**：R-13 `next build` 已通过（13 秒，退出码 0，10 条路由全部编译）；
 R-15 自查唯一命中的是 `scripts/guards.mjs` 里的测试夹具口令（注释已注明不是凭据），
 `.env` / `dev.db` 均未入库；R-14 375px 待真机。
+另外为阶段 6 部署把 `npm run build` 改成 `prisma generate && next build`（Vercel 上必须先生成 Client），
+并新增 `scripts/db-provider.mjs`（SQLite ↔ Postgres 一键切）与定时兜底端点。
 
 ---
 

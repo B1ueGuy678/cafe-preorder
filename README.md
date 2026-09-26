@@ -63,6 +63,7 @@ node scripts/smoke.mjs    # 核心机制与状态机，20 项，无需服务器
 node scripts/e2e.mjs      # 真实 HTTP 主流程 + 异常路径，36 项，需 dev server 运行中
 node scripts/guards.mjs   # 口令限速与支付失败，12 项，自带独立 server（端口 3101）
 node ./node_modules/next/dist/bin/next build   # 生产构建，应退出码 0
+npm run build                                  # 同上，但会先跑 prisma generate（部署用）
 ```
 
 `guards.mjs` 会自己起一个 server，所以**跑之前要先停掉 dev server**：
@@ -80,7 +81,8 @@ node ./node_modules/next/dist/bin/next build   # 生产构建，应退出码 0
 | `docs/ARCHITECTURE.md` | 阶段 2：数据模型、订单状态机、API 契约、部署图、技术债 |
 | `docs/POLISH.md` | 阶段 3：异常路径规格 R-1…R-15、任务分解、验证命令 |
 | `SETUP.md` | 本机网络与工程环境的绕行方案（代理、TLS 后端、npm 缓存、spawn 限制） |
-| `DEMO.md` | 待阶段 6-7 补充：上线地址、真实数据、用户反馈、下一步 |
+| `docs/DEPLOY.md` | 阶段 6：Vercel + Neon 部署清单、上线后自检、回滚与已知局限 |
+| `DEMO.md` | 阶段 7：上线地址、真实数据、用户反馈与下一步（骨架已建，待填） |
 
 ## 已知技术债（上线前必须处理）
 

@@ -95,14 +95,17 @@ src/
 │   ├── order/[id]/page.tsx         订单状态页（4 秒轮询）
 │   ├── staff/page.tsx              店员接单台（含口令门）
 │   └── api/
-│       ├── orders/route.ts         GET 选项 / POST 下单
+│       ├── orders/route.ts         GET 选项 / POST 下单（含幂等键）
 │       ├── orders/[id]/route.ts    GET 详情 / POST 取消·催单
+│       ├── cron/auto-cancel/route.ts 定时兜底取消（需 CRON_SECRET，部署用）
 │       └── staff/
-│           ├── auth/route.ts       口令登录 / 登出
+│           ├── auth/route.ts       口令登录 / 登出（含失败限速）
 │           ├── queue/route.ts      GET 队列 / POST 店铺设置
 │           └── orders/[id]/route.ts POST 接单·拒单·做好·取餐
 ├── components/  OrderPicker / OrderStatusTracker / StaffConsole / StaffGate
 └── lib/         status.ts★ time.ts★ domain.ts★ db.ts staff-auth.ts
+                 http.ts（请求体守卫）error-text.ts（报错中文化）use-polling.ts（断网可见）
+scripts/         smoke.mjs / e2e.mjs / guards.mjs / db-provider.mjs
 ```
 
 ★ = 核心逻辑，改动需谨慎。
@@ -175,7 +178,7 @@ node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 
 **立刻要做**：
 
-1. 本地领先远程 6 个提交，需用户在自己终端 `git push`
+1. 本地领先远程 1 个提交（阶段 3 的 S3-3），需用户在自己终端 `git push`
 
 **阶段 3（进行中，规格与任务见 `docs/POLISH.md`）**：
 
@@ -188,9 +191,12 @@ node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 
 **阶段 6-7（上线与复盘）**：
 
-6. 部署到 Vercel 免费额度（需连仓库、配 `DATABASE_URL` 与 `STAFF_PASSCODE`）
-7. 写 `DEMO.md`：上线地址、真实数据、用户反馈、下一步
-8. 让真实用户（那家咖啡店）实际用一次，记录差评并当场修
+7. 🚧 部署到 Vercel（Hobby）+ Neon Postgres：**操作清单已备好，见 `docs/DEPLOY.md`**。
+   代码侧已就绪——`npm run build` 自带 `prisma generate`、`node scripts/db-provider.mjs postgres`
+   一键切库、`/api/cron/auto-cancel` 提供定时兜底（需 `CRON_SECRET`，未配置时 503 禁用）。
+   剩下的是要账号的动作：建 Neon 库、Vercel 导入仓库、配 4 个环境变量、初始化生产库
+8. ✅ `DEMO.md` 骨架已建（阶段 7 的产物容器，待填真实地址与使用记录）
+9. ⬜ 让真实用户（那家咖啡店）实际用一次，记录差评并当场修
 
 **已知技术债**（有意识取舍，不是遗漏）：
 
