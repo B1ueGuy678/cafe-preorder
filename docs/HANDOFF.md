@@ -8,10 +8,11 @@
 
 ## 1. 一句话现状
 
-一个**能跑起来**的咖啡店到店预点单产品：顾客端下单、店员端接单、订单状态机、
-模拟支付全部实现，68 项自动化测试通过（smoke 20 + e2e 36 + guards 12）。
-阶段 0-2 已完成，阶段 3 进行中：**S3-1 服务端硬化、S3-2 顾客端韧性、S3-3 店员端韧性已完成**；
-S3-4 里 `next build` 与密钥自查已过，只剩 375px 真机实测。阶段 3 规格见 `docs/POLISH.md`。
+一个**已经上线**的咖啡店到店预点单产品：https://cafe-preorder.vercel.app
+（顾客端 `/`、店员端 `/staff`）。顾客端下单、店员端接单、订单状态机、模拟支付全部实现。
+本地自动化测试 68 项（smoke 20 + e2e 36 + guards 12）全过，上线只读体检 18 项全过。
+阶段 0-3 已完成（只剩 R-14 375px 真机确认）；阶段 6 已部署上线；
+阶段 7（真实用户复盘）待做 —— 产物容器是 `DEMO.md`。
 
 ## 2. 项目基本信息
 
@@ -22,7 +23,8 @@ S3-4 里 `next build` 与密钥自查已过，只剩 375px 真机实测。阶段
 | 分支 | `main` |
 | 技术栈 | Next.js 15 + TypeScript + Prisma + SQLite（开发）/ Postgres（生产） |
 | 支付 | 模拟支付（`PAY_MODE=MOCK`） |
-| 本地分支状态 | **领先远程 6 个提交，尚未 push** |
+| 线上地址 | https://cafe-preorder.vercel.app（店员端 `/staff`，口令不在仓库里） |
+| 本地分支状态 | 可能领先远程若干提交，用 `git status -sb` 看；**push 必须由用户在自己终端执行** |
 
 ## 3. 这是什么题目
 
@@ -196,7 +198,9 @@ node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 
 **阶段 6-7（上线与复盘）**：
 
-7. 🚧 部署到 Vercel（Hobby）+ Postgres：**操作清单见 `docs/DEPLOY.md`**，代码侧已全部就绪——
+7. ✅ 已部署上线：https://cafe-preorder.vercel.app（Vercel Hobby + Neon Postgres）。
+   上线体检 `node scripts/check-online.mjs https://cafe-preorder.vercel.app` → 18 项通过 / 0 失败。
+   操作清单见 `docs/DEPLOY.md`，代码侧要点——
    `vercel.json` 的 buildCommand 会在 Vercel 的临时检出里自动切 provider 生成 Client
    （仓库里永远保持 sqlite，本地开发不受影响）、`node scripts/db-init-prod.mjs` 一条命令初始化
    生产库且失败也会还原本地环境、`/api/cron/auto-cancel` 提供定时兜底（需 `CRON_SECRET`）。

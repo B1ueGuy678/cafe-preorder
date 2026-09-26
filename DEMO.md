@@ -6,17 +6,21 @@
 
 ## 上线地址
 
-- 顾客端：`待填`
-- 店员端：`待填`（口令只存在密码管理器里，不入库、不进对话）
+- 顾客端：https://cafe-preorder.vercel.app
+- 店员端：https://cafe-preorder.vercel.app/staff（口令只存在密码管理器里，不入库、不进对话）
 
 ## 部署记录
 
 | 项 | 值 |
 | --- | --- |
 | 平台 | Vercel（Hobby） |
-| 数据库 | Neon Postgres（免费额度） |
+| 数据库 | Neon Postgres（us-east-2，库名 neondb） |
 | 支付 | 模拟支付 `PAY_MODE=MOCK`，未接入真实支付 |
-| 首次上线时间 | `待填` |
+| 首次上线时间 | 2026-09-26 |
+| 上线体检 | 18 项通过 / 0 失败（2026-09-26，`scripts/check-online.mjs`） |
+
+> 体检脚本只发 GET 和注定失败的 POST，不往生产库写数据；
+> 本机直连被拦，跑的时候要走代理（见 `docs/DEPLOY.md` §5）。
 
 ## 真实使用记录
 
