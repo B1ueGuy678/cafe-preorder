@@ -196,10 +196,12 @@ node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 
 **阶段 6-7（上线与复盘）**：
 
-7. 🚧 部署到 Vercel（Hobby）+ Neon Postgres：**操作清单已备好，见 `docs/DEPLOY.md`**。
-   代码侧已就绪——`npm run build` 自带 `prisma generate`、`node scripts/db-provider.mjs postgres`
-   一键切库、`/api/cron/auto-cancel` 提供定时兜底（需 `CRON_SECRET`，未配置时 503 禁用）。
-   剩下的是要账号的动作：建 Neon 库、Vercel 导入仓库、配 4 个环境变量、初始化生产库
+7. 🚧 部署到 Vercel（Hobby）+ Postgres：**操作清单见 `docs/DEPLOY.md`**，代码侧已全部就绪——
+   `vercel.json` 的 buildCommand 会在 Vercel 的临时检出里自动切 provider 生成 Client
+   （仓库里永远保持 sqlite，本地开发不受影响）、`node scripts/db-init-prod.mjs` 一条命令初始化
+   生产库且失败也会还原本地环境、`/api/cron/auto-cancel` 提供定时兜底（需 `CRON_SECRET`）。
+   剩下的是要账号的动作：Vercel 导入仓库 → 建 Postgres（推荐用 Vercel 自带 Storage）→
+   配 4 个环境变量 → Deploy → 跑一次生产库初始化
 8. ✅ `DEMO.md` 骨架已建（阶段 7 的产物容器，待填真实地址与使用记录）
 9. ⬜ 让真实用户（那家咖啡店）实际用一次，记录差评并当场修
 

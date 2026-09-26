@@ -15,32 +15,49 @@
 
 ---
 
-## 1. 建 Postgres（Neon 免费额度）
+## 1. 建 Postgres（两条路，推荐第一条）
+
+**路 A（少三步，推荐）：用 Vercel 自带的 Postgres**
+
+1. Vercel 项目建好后 → 顶部 **Storage** → **Create Database** → 选 Postgres（Neon 提供）
+2. 创建时勾选连接到本项目 → 连接串由 Vercel 自动注入，不用手抄
+
+**路 B：自己开 Neon**
 
 1. neon.tech 建项目，拿连接串，形如：
-   `postgresql://user:pw@ep-xxx.aws.neon.tech/neondb?sslmode=require`
-2. **连接串不要进仓库、不要贴进对话**，只填进 Vercel 的环境变量。
+   `postgresql://user:pw@ep-xxx.neon.tech/neondb?sslmode=require`
+2. Vercel 项目 → Settings → Environment Variables → 手动加 `DATABASE_URL`
 
-## 2. 切 provider 并推分支
+> 两条路的共同点：**连接串不要进仓库、不要贴进对话**。
+> 走路 A 时确认注入的变量里确实有 **`DATABASE_URL`**（Neon 集成还会给
+> `POSTGRES_URL` / `DATABASE_URL_UNPOOLED` 等，本项目只认 `DATABASE_URL`；
+> 没有就手动补一条，值用带 `?sslmode=require` 的那个连接串）。
+
+## 2. 推送代码（不需要手工切 provider）
 
 ```bash
 cd D:\DeepSeek\cafe-preorder
-node scripts/db-provider.mjs status      # 先看当前是 sqlite 还是 postgresql
-node scripts/db-provider.mjs postgres    # sqlite → postgresql
-git add prisma/schema.prisma
-git commit -m "chore: 生产切 Postgres"
+git status -sb     # 确认工作区干净、看看领先远程几个提交
 git push
 ```
 
-> 本地还要继续开发就 `node scripts/db-provider.mjs sqlite` 切回来（脚本幂等，可反复跑）。
-> 长期方案是本地也跑 Postgres 容器；本项目为了「零安装本地开发」保留 sqlite 主线，
-> 这是有意识的取舍，不是遗漏。
+**为什么不用手工切库**：Prisma 的 provider 读不了环境变量，而本地开发必须用 SQLite
+（本机对外 HTTPS 受限，云数据库在本地连不上，见 `SETUP.md`）。所以：
+
+- 仓库里的 `prisma/schema.prisma` **永远是 `sqlite`**
+- `vercel.json` 的 `buildCommand` 在 **Vercel 自己的临时检出里**先切成 `postgresql`，
+  再生成 Client、再构建
+
+这样本地开发、仓库内容、线上构建三者不会互相打架，也不会因为「本地切回 sqlite 顺手提交」
+把线上构建弄坏（这条坑是设计时特意避开的）。
+
+> 手动切库的能力仍然保留：`node scripts/db-provider.mjs status|sqlite|postgres`。
 
 ## 3. Vercel 导入仓库
 
 1. vercel.com → Add New → Project → 选 `cafe-preorder`
-2. Framework 会识别成 Next.js；**Build Command 保持默认**（`npm run build`，
-   已在 `package.json` 里带上 `prisma generate`，不需要你在面板里手写）
+2. Framework 会识别成 Next.js。**Build Command 保持默认、不要开 Override**——
+   仓库里的 `vercel.json` 会覆盖它，自动做「切 provider → 生成 Client → 构建」三步
 3. 环境变量：
 
 | 变量 | 值 | 说明 |
@@ -58,11 +75,18 @@ git push
 
 ```powershell
 $env:DATABASE_URL="postgresql://...neon.tech/neondb?sslmode=require"
-node ./node_modules/prisma/build/index.js db push
-node prisma/seed.mjs
+node scripts/db-init-prod.mjs
+Remove-Item Env:DATABASE_URL      # 用完清掉，避免影响后续本地开发
 ```
 
-确认：访问线上 `/` 能看到「巷口咖啡」和 12 项菜单。种子脚本是幂等的，重复跑不会产生重复数据。
+这个脚本替你做四件事，并且**无论成败都把本地环境还原回 SQLite**：
+
+1. 校验 `DATABASE_URL` 确实是 Postgres 连接串（防止手滑拿本地库去初始化线上）
+2. 临时切 provider → 生成 Postgres 版 Client
+3. `prisma db push` 建表 + 跑种子数据（幂等，重复跑不会重复插入）
+4. 还原 provider 与 Client 到 SQLite（失败也会还原，不会把本地开发搞坏）
+
+确认：访问线上 `/` 能看到「巷口咖啡」和 12 项菜单；终端里种子脚本会打印当前菜单项数。
 
 ## 5. 上线后自检（照着点一遍）
 

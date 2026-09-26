@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "node scripts/db-provider.mjs postgres && node ./node_modules/prisma/build/index.js generate && node ./node_modules/next/dist/bin/next build",
   "crons": [
     {
       "path": "/api/cron/auto-cancel",
