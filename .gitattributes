@@ -1,0 +1,43 @@
+# 统一换行符：仓库内一律 LF，检出时不做转换
+# 目的：避免 Windows(CRLF) 与 Mac/Linux(LF) 协作时产生整文件 diff 噪音，
+#       也让后续 Docker / CI 构建拿到稳定的 LF 源文件。
+* text=auto eol=lf
+
+# 二进制文件不做任何换行处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.zip binary
+*.gz binary
+
+# 明确文本类型，便于 diff 与合并
+*.md text
+*.json text
+*.yml text
+*.yaml text
+*.js text
+*.jsx text
+*.ts text
+*.tsx text
+*.css text
+*.html text
+*.sql text
+*.sh text eol=lf
+
+# Windows 专用脚本保留 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 语言统计忽略
+package-lock.json linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
