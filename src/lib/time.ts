@@ -93,6 +93,14 @@ export function remainingText(deadline: Date, now = new Date()): string {
   return m > 0 ? `${m} 分 ${s} 秒` : `${s} 秒`;
 }
 
+/** 秒级时刻，用于「已同步 · 最后更新 HH:MM:SS」这类同步提示（阶段 3 / R-6、R-10） */
+export function formatClock(ms: number): string {
+  const d = new Date(ms);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+}
+
 export function centsToYuan(cents: number): string {
   return `¥${(cents / 100).toFixed(2).replace(/\.00$/, "")}`;
 }

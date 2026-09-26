@@ -10,8 +10,8 @@
 
 一个**能跑起来**的咖啡店到店预点单产品：顾客端下单、店员端接单、订单状态机、
 模拟支付全部实现，68 项自动化测试通过（smoke 20 + e2e 36 + guards 12）。
-阶段 0-2 已完成，阶段 3 进行中：**S3-1 服务端硬化、S3-2 顾客端韧性已完成**，
-下一步 S3-3（店员端韧性）与 S3-4（上线前检查）。阶段 3 规格见 `docs/POLISH.md`。
+阶段 0-2 已完成，阶段 3 进行中：**S3-1 服务端硬化、S3-2 顾客端韧性、S3-3 店员端韧性已完成**；
+S3-4 里 `next build` 与密钥自查已过，只剩 375px 真机实测。阶段 3 规格见 `docs/POLISH.md`。
 
 ## 2. 项目基本信息
 
@@ -148,6 +148,7 @@ node ./node_modules/next/dist/bin/next dev -p 3000
 node scripts/smoke.mjs    # 核心机制与状态机，20 项，无需服务器 → 全通过
 node scripts/e2e.mjs      # 真实 HTTP 主流程 + 异常路径，36 项，需 dev server → 全通过
 node scripts/guards.mjs   # 口令限速与支付失败，12 项，自带独立 server → 全通过
+node ./node_modules/next/dist/bin/next build       # → 生产构建通过（阶段 3 / R-13 补验）
 node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 ```
 
@@ -165,7 +166,10 @@ node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 - R-6 / R-7「断网横幅」「失败文案中文化」——需要 DevTools 切 Offline，
   步骤见 `docs/POLISH.md` §6
 - AC-15「陌生人独立完成全流程」——需要真实用户
-- 生产构建 `next build`——阶段 2 时本机 spawn 受限未跑，留到 S3-4 / R-13
+- R-10 / R-11「店员端陈旧横幅」「并发处理回执」——需要 DevTools Offline 与双标签页，
+  步骤见 `docs/POLISH.md` §6
+
+已在阶段 3 补验：生产构建 `next build` 通过（13 秒，退出码 0）。
 
 ## 11. 未完成事项
 
@@ -178,8 +182,8 @@ node ./node_modules/typescript/bin/tsc --noEmit   # → exit 0
 2. ✅ 异常路径的服务端一侧（S3-1 / R-1…R-5）：并发流转、重复提交、畸形请求、
    支付失败、口令限速 —— 已实现并测试
 3. ✅ 顾客端韧性（S3-2 / R-6…R-9）：断网横幅、失败文案中文化、空态、提交防重
-4. ⬜ 店员端韧性（S3-3 / R-10…R-12）：队列陈旧提示、空队列、操作失败回执
-5. ⬜ 上线前检查（S3-4 / R-13…R-15）：`next build`、375px 实测、密钥自查
+4. ✅ 店员端韧性（S3-3 / R-10…R-12）：队列陈旧横幅、空队列文案、并发与失败回执
+5. 🚧 上线前检查（S3-4）：`next build` ✅（R-13）、密钥自查 ✅（R-15）、375px 真机 ⬜（R-14）
 6. ⬜ `/staff` 的口令门升级为真实认证（若要给多人用）
 
 **阶段 6-7（上线与复盘）**：

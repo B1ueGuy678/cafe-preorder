@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readableError } from "@/lib/error-text";
 import StaffConsole from "./StaffConsole";
 
 /**
@@ -25,11 +26,11 @@ export default function StaffGate({ initial }: { initial: Parameters<typeof Staf
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passcode }),
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "登录失败");
       window.location.reload();
     } catch (err) {
-      setError((err as Error).message);
+      setError(readableError(err, "登录失败，请重试"));
       setBusy(false);
     }
   }
@@ -57,6 +58,7 @@ export default function StaffGate({ initial }: { initial: Parameters<typeof Staf
           className="btn btn-primary"
           style={{ marginTop: 12 }}
           disabled={busy || passcode.length === 0}
+          aria-busy={busy}
         >
           {busy ? "校验中…" : "进入接单台"}
         </button>

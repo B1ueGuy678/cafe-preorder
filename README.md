@@ -62,6 +62,7 @@ STAFF_PASSCODE=改成你自己的口令
 node scripts/smoke.mjs    # 核心机制与状态机，20 项，无需服务器
 node scripts/e2e.mjs      # 真实 HTTP 主流程 + 异常路径，36 项，需 dev server 运行中
 node scripts/guards.mjs   # 口令限速与支付失败，12 项，自带独立 server（端口 3101）
+node ./node_modules/next/dist/bin/next build   # 生产构建，应退出码 0
 ```
 
 `guards.mjs` 会自己起一个 server，所以**跑之前要先停掉 dev server**：

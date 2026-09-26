@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { readableError } from "@/lib/error-text";
+import { formatClock } from "@/lib/time";
+import { usePolling } from "@/lib/use-polling";
 
 type OrderItem = {
   id: string;
@@ -53,8 +56,6 @@ function itemsText(items: OrderItem[]): string {
 }
 
 /** 队列按到店时刻排序——这是本产品区别于普通点单小程序的核心机制 */
-const POLL_MS = 4000;
-
 export default function StaffConsole({ initial }: { initial: Queue }) {
   const [q, setQ] = useState<Queue>(initial);
   const [toast, setToast] = useState<string | null>(null);
@@ -62,15 +63,12 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
   const [rejectFor, setRejectFor] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const refresh = useCallback(async () => {
+  // 队列陈旧可见（R-10）：拉不到数据时必须说出来——店员对着过期队列接单会做错单
+  const { offline, lastSyncAt, refresh, markOffline } = usePolling(async () => {
     const res = await fetch("/api/staff/queue", { cache: "no-store" });
-    if (res.ok) setQ(await res.json());
-  }, []);
-
-  useEffect(() => {
-    const id = setInterval(refresh, POLL_MS);
-    return () => clearInterval(id);
-  }, [refresh]);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    setQ((await res.json()) as Queue);
+  });
 
   useEffect(() => {
     if (!toast) return;
@@ -90,7 +88,12 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reason }),
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 409) {
+        // 别人先处理了这一单（双店员同时点、顾客刚取消）——先刷新，别让人继续点
+        await refresh();
+        throw new Error("这一单刚被其他人处理过，队列已刷新");
+      }
       if (!res.ok) throw new Error(body.error ?? "操作失败");
       await refresh();
       const text: Record<string, string> = {
@@ -101,7 +104,9 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
       };
       setToast(text[action] ?? "已完成");
     } catch (err) {
-      setToast((err as Error).message);
+      if (err instanceof TypeError) markOffline();
+      setToast(readableError(err, "操作失败，请重试"));
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -115,7 +120,7 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "设置失败");
       await refresh();
       setToast(
@@ -126,7 +131,8 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
           : `制作时长已设为 ${body.shop.prepMinutes} 分钟`,
       );
     } catch (err) {
-      setToast((err as Error).message);
+      if (err instanceof TypeError) markOffline();
+      setToast(readableError(err, "设置失败，请重试"));
     } finally {
       setBusy(false);
     }
@@ -263,6 +269,15 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
 
   return (
     <>
+      {offline && (
+        <div className="card card-tight" role="status" aria-live="polite">
+          <span className="badge badge-warn">队列可能已过期</span>
+          <div className="muted">
+            网络不稳，正在重试…看到的数据可能不是最新的，恢复后会自动刷新。
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <div className="switch-row">
           <div>
@@ -343,7 +358,7 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
       <div className="card">
         <p className="section-title">待接单（{q.pending.length}）· 按到店时刻排序</p>
         {q.pending.length === 0 ? (
-          <div className="empty">暂无待接单</div>
+          <div className="empty">当前没有待接单</div>
         ) : (
           q.pending.map(renderPending)
         )}
@@ -352,7 +367,7 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
       <div className="card">
         <p className="section-title">制作中（{q.making.length}）</p>
         {q.making.length === 0 ? (
-          <div className="empty">暂无制作中订单</div>
+          <div className="empty">当前没有制作中的订单</div>
         ) : (
           q.making.map(renderMaking)
         )}
@@ -361,7 +376,7 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
       <div className="card">
         <p className="section-title">待取餐（{q.ready.length}）</p>
         {q.ready.length === 0 ? (
-          <div className="empty">暂无待取餐</div>
+          <div className="empty">当前没有等待取餐的订单</div>
         ) : (
           q.ready.map(renderReady)
         )}
@@ -369,6 +384,13 @@ export default function StaffConsole({ initial }: { initial: Queue }) {
 
       <p className="muted" style={{ textAlign: "center" }}>
         队列每 4 秒自动刷新；过期未接单的订单会被系统自动取消并退款。
+      </p>
+      <p className="muted" style={{ textAlign: "center" }}>
+        {offline
+          ? "网络恢复后队列会自动刷新"
+          : lastSyncAt
+            ? `已同步 · 最后更新 ${formatClock(lastSyncAt)}`
+            : "正在同步…"}
       </p>
 
       {toast && <div className="toast">{toast}</div>}
