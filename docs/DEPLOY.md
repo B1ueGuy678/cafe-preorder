@@ -28,10 +28,23 @@
    `postgresql://user:pw@ep-xxx.neon.tech/neondb?sslmode=require`
 2. Vercel 项目 → Settings → Environment Variables → 手动加 `DATABASE_URL`
 
+### 1.1 注入的变量名怎么认（这一步最容易卡住）
+
+Vercel 的 Postgres 集成会给一组变量，名字不完全固定。**本项目代码里已经做了兜底**，
+按下面的优先级自动挑；你只要确认「至少有一个存在」就行：
+
+| 用途 | 变量优先级 | 为什么 |
+| --- | --- | --- |
+| 应用运行时查询 | `DATABASE_URL` → `POSTGRES_PRISMA_URL` → `POSTGRES_URL` | 用**池化**地址（主机名带 `-pooler`），无服务器并发下更稳 |
+| 建表 / 初始化（DDL） | `DATABASE_URL_UNPOOLED` → `POSTGRES_URL_NON_POOLING` → `DATABASE_URL` → … | 必须用**直连**地址：池化器不支持建表语句，拿池化串跑 `db push` 会失败 |
+
+代码位置：`src/lib/db-url.ts`（运行时兜底）、`scripts/db-init-prod.mjs`（挑直连串）。
+
+**怎么确认注入成功**：Vercel 项目 → Settings → Environment Variables，
+列表里应能看到 `DATABASE_URL`（或至少 `POSTGRES_URL` / `DATABASE_URL_UNPOOLED`）。
+一个都没有 → 回 Storage 页面确认数据库确实连接到了这个项目，或手动加一条。
+
 > 两条路的共同点：**连接串不要进仓库、不要贴进对话**。
-> 走路 A 时确认注入的变量里确实有 **`DATABASE_URL`**（Neon 集成还会给
-> `POSTGRES_URL` / `DATABASE_URL_UNPOOLED` 等，本项目只认 `DATABASE_URL`；
-> 没有就手动补一条，值用带 `?sslmode=require` 的那个连接串）。
 
 ## 2. 推送代码（不需要手工切 provider）
 
@@ -78,6 +91,10 @@ $env:DATABASE_URL="postgresql://...neon.tech/neondb?sslmode=require"
 node scripts/db-init-prod.mjs
 Remove-Item Env:DATABASE_URL      # 用完清掉，避免影响后续本地开发
 ```
+
+脚本会先在 `DATABASE_URL_UNPOOLED / POSTGRES_URL_NON_POOLING / DATABASE_URL / …`
+里自动挑一条**直连**串，并打印「使用变量：XXX」——所以你也可以把 Vercel 那一整组变量
+都贴进本地环境，让它自己选。挑到池化地址（`-pooler`）时它会告警并建议换直连串。
 
 这个脚本替你做四件事，并且**无论成败都把本地环境还原回 SQLite**：
 

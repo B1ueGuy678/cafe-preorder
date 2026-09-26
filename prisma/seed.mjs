@@ -4,7 +4,13 @@
 
 import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+// 变量名兜底：与 src/lib/db-url.ts 保持一致的优先级
+// （Vercel 的 Postgres 集成给的名字不完全统一）
+const url = ["DATABASE_URL", "POSTGRES_PRISMA_URL", "POSTGRES_URL"]
+  .map((key) => process.env[key]?.trim())
+  .find(Boolean);
+
+const prisma = new PrismaClient(url ? { datasources: { db: { url } } } : {});
 
 async function main() {
   let shop = await prisma.shop.findFirst({ orderBy: { createdAt: "asc" } });
