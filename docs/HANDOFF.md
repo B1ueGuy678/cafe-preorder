@@ -106,11 +106,16 @@ src/
 └── lib/         status.ts★ time.ts★ domain.ts★ db.ts staff-auth.ts
                  http.ts（请求体守卫）error-text.ts（报错中文化）use-polling.ts（断网可见）
 scripts/         smoke.mjs / e2e.mjs / guards.mjs / db-provider.mjs
+根目录           start.cmd + start.ps1（一键启动，会自行 cd 到项目目录）
 ```
 
 ★ = 核心逻辑，改动需谨慎。
 
 ## 8. 怎么跑起来（本机有特殊约束，务必照抄）
+
+> **省事版**：双击项目根目录的 `start.cmd`（等价于 `start.ps1`）——它会自动补依赖 /
+> Prisma Client / 种子数据，处理端口冲突（本项目已在跑则复用，绝不启第二个），
+> 等前后端都就绪再打开浏览器。下面的手动命令用于排障与理解每一步。
 
 ```bash
 cd D:\DeepSeek\cafe-preorder

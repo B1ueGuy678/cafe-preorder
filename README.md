@@ -25,6 +25,21 @@
 
 ## 快速开始
 
+### 一键启动（Windows，推荐）
+
+双击项目根目录的 **`start.cmd`**，或者：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start.ps1
+```
+
+它会自己 cd 到项目目录，然后依次：找 Node → 缺依赖/Prisma Client/本地数据库就自动补齐 →
+处理端口冲突（本项目已在跑就直接复用，被别的程序占用就自动换端口）→
+等**前端和后端都就绪**再打开浏览器。参数（`-Port` / `-NoBrowser` / `-Prod` / `-Reset`）
+见 `start.ps1` 顶部注释。
+
+### 手动启动（排障用）
+
 ```bash
 # 1. 安装依赖（本机需带缓存参数，见 SETUP.md）
 npm install --cache .npm-cache
