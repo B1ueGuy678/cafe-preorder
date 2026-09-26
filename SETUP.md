@@ -49,3 +49,77 @@ git config --local http.proxy http://127.0.0.1:23995
   `couldn't create signal pipe, Win32 error 5`，属环境限制，非仓库问题。
 - 若凭据助手的浏览器授权窗口无法在沙箱内弹出，
   在自己的终端里执行一次 push 完成授权，凭据会被记住，之后在沙箱内即可正常推送。
+
+---
+
+# 工程环境约束（Node / npm / Prisma）
+
+这套环境有若干处会静默破坏构建的限制，全部记录下来。
+
+## 1. 沙箱禁止 spawn 子进程
+
+表现为 `Error: spawn EPERM`（errno -4048）。已知会触发的操作：
+
+| 操作 | 结果 |
+| --- | --- |
+| DSH 内置的 `pnpm` runner | 直接失败，**不要用 pnpm，改用 npm** |
+| `npm install` 的 `postinstall` | 触发 rebuild → spawn → **整个安装被回滚** |
+| `prisma db push` / `migrate` | schema engine 二进制无法启动 |
+| `next dev` / `next build` | 无法启动编译工作进程 |
+
+**应对**：
+
+- `package.json` 中**已移除 `postinstall`**，改为手动 `npm run db:generate`。
+  否则 `npm install` 会在最后一步把装好的 `node_modules` 全部回滚。
+- Prisma CLI 用 `node ./node_modules/prisma/build/index.js <cmd>` 直接调用，
+  绕开外壳包装。
+- `prisma db push` 与 `next dev` 需要更宽的执行权限，
+  或改到普通终端里执行（推荐，不受影响）。
+
+## 2. npm 缓存必须放在工作区内
+
+默认缓存目录 `C:\Users\<用户>\AppData\Local\npm-cache` 在工作区之外，会被拒绝：
+
+```
+npm error EPERM: operation not permitted, open '...\npm-cache\_cacache\tmp\...'
+```
+
+**应对**：固定带上缓存参数。
+
+```bash
+npm install --cache .npm-cache
+```
+
+`.npm-cache/` 已加入 `.gitignore`。
+
+## 3. 已确认可用的命令序列
+
+```bash
+# 安装（必须带 --cache；当前 package.json 已无 postinstall，无需 --ignore-scripts）
+npm install --cache .npm-cache
+
+# Prisma：校验 / 生成 / 建库
+node ./node_modules/prisma/build/index.js validate
+node ./node_modules/prisma/build/index.js generate
+node ./node_modules/prisma/build/index.js db push --skip-generate
+
+# 种子数据与测试
+node prisma/seed.mjs
+node scripts/smoke.mjs
+node scripts/e2e.mjs          # 需 dev server 运行中
+
+# 类型检查
+node ./node_modules/typescript/bin/tsc --noEmit
+
+# 开发服务器（沙箱内需更宽权限，或改到普通终端）
+node ./node_modules/next/dist/bin/next dev -p 3000
+```
+
+## 4. 数据库选型说明
+
+本机**没有 Docker、没有本地 Postgres**，因此：
+
+- 开发库用 **SQLite**（零安装，`prisma/dev.db`，已 gitignore）
+- 生产切 Postgres 只需改 `datasource` 与 `DATABASE_URL` 并重新迁移，
+  业务代码无需改动（Prisma 屏蔽了差异）
+

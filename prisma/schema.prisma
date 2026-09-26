@@ -1,0 +1,116 @@
+// 数据模型 · 阶段 2
+// 设计依据：docs/PRODUCT.md
+//
+// 两个必须保留的字段，它们承载了本产品区别于普通点单小程序的核心机制：
+//   arrivalAt     —— 顾客选定的到店时刻（店员端队列按它排序，不是按下单时刻）
+//   startMakingAt —— 下料时刻 = arrivalAt − shop.prepMinutes（由到达时刻倒推）
+//
+// 开发库用 SQLite（零安装即可跑通）；生产切 Postgres 时改 datasource 并重新迁移。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Shop {
+  id           String   @id @default(cuid())
+  name         String
+  prepMinutes  Int      @default(3) // 制作时长 T，店员端可配置，驱动「预计做好」时刻
+  accepting    Boolean  @default(true) // 店员控速开关（AC-6）
+  openTime     String   @default("07:00")
+  closeTime    String   @default("20:00")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders Order[]
+  drinks Drink[]
+}
+
+model Drink {
+  id         String      @id @default(cuid())
+  shopId     String
+  name       String
+  size       String // 中杯 / 大杯
+  priceCents Int // 以分为单位，避免浮点误差
+  sortOrder  Int         @default(0) // 常点置顶排序（不做搜索，见非目标）
+  available  Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+
+  shop       Shop        @relation(fields: [shopId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([shopId, sortOrder])
+}
+
+// 项目状态机（AC-14：终态不可再次流转）
+//   UNPAID ──支付──► PENDING ──接单──► MAKING ──做好──► READY ──取餐──► PICKED_UP(终态)
+//                      │                │                │
+//                  拒单/超时         顾客取消          顾客取消
+//                      ▼                ▼                ▼
+//                   CANCELED(终态)   CANCELED          CANCELED
+enum OrderStatus {
+  UNPAID // 已创建未支付
+  PENDING // 已支付，待店员接单
+  MAKING // 店员已接单，制作中
+  READY // 已做好，等待取餐
+  PICKED_UP // 已取餐（终态）
+  CANCELED // 已取消（终态，含拒单与超时）
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  shopId       String
+  status       OrderStatus @default(UNPAID)
+
+  // 取餐凭据：报手机尾号或名字（保留人情味，AC-12）
+  phoneTail    String
+  customerName String?
+
+  arrivalAt     DateTime // 顾客选定的到店时刻，5 分钟粒度（AC-2）
+  startMakingAt DateTime? // 下料时刻 = arrivalAt − prepMinutes（AC-3）
+  readyAt       DateTime?
+  pickedUpAt    DateTime?
+
+  totalCents   Int
+  note         String? // 糖度/冰度备注
+
+  // 支付（阶段 2 为模拟支付）
+  payMode      String  @default("MOCK")
+  paidAt       DateTime?
+
+  // 取消与拒单
+  cancelReason String? // TIMEOUT / REJECT_SOLD_OUT / REJECT_BUSY / CUSTOMER
+  canceledAt   DateTime?
+
+  // 顾客「我快到了 / 请帮我留一下」（AC-12）
+  holdRequestedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shop  Shop        @relation(fields: [shopId], references: [id])
+  items OrderItem[] @relation("OrderItems")
+
+  // 店员端队列：按到店时刻排序（AC-5）
+  @@index([shopId, status, arrivalAt])
+  @@index([shopId, createdAt])
+}
+
+model OrderItem {
+  id         String @id @default(cuid())
+  orderId    String
+  drinkId    String
+  nameSnap   String // 下单时快照，防止后续改价改单影响历史订单
+  sizeSnap   String
+  priceCents Int
+  qty        Int    @default(1)
+
+  order  Order @relation("OrderItems", fields: [orderId], references: [id], onDelete: Cascade)
+  drink Drink @relation(fields: [drinkId], references: [id])
+
+  @@index([orderId])
+}

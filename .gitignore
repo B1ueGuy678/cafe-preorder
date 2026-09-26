@@ -28,6 +28,17 @@ out/
 secrets/
 .credentials/
 
+# ---- 本地数据库（绝不入库：含真实订单数据）----
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+prisma/dev.db*
+
+# ---- 本地构建缓存（缓存必须放工作区内，见 SETUP.md）----
+.npm-cache/
+next-env.d.ts
+
 # ---- 日志与运行时 ----
 *.log
 logs/
